@@ -114,6 +114,7 @@ RUN uv pip install --no-cache-dir --no-deps -e "."
 # ---------- Production image additions (live dependency versions) ----------
 RUN uv pip install --python /opt/hermes/.venv/bin/python \
     edge-tts==7.2.7 \
+    honcho-ai==2.0.1 \
     tabulate==0.10.0 \
     aiohttp==3.13.3 \
     aiohappyeyeballs==2.6.1 \
