@@ -3638,6 +3638,79 @@ class DiscordAdapter(BasePlatformAdapter):
             and getattr(att, "waveform", None) is not None
         )
 
+
+    @staticmethod
+    def _format_discord_embed_context(embeds: list[Any]) -> Optional[str]:
+        """Render Discord embeds into plain text so downstream agents can parse them."""
+        sections: list[str] = []
+        for idx, embed in enumerate(embeds, start=1):
+            if embed is None:
+                continue
+            lines: list[str] = [f"[Discord embed {idx}]"]
+            author = getattr(embed, "author", None)
+            author_name = getattr(author, "name", None) if author else None
+            if author_name:
+                lines.append(f"author: {str(author_name).strip()}")
+            title = getattr(embed, "title", None)
+            if title:
+                lines.append(f"title: {str(title).strip()}")
+            description = getattr(embed, "description", None)
+            if description:
+                lines.append(f"description: {str(description).strip()}")
+            for field in getattr(embed, "fields", []) or []:
+                field_name = str(getattr(field, "name", "") or "").strip() or "unnamed"
+                field_value = str(getattr(field, "value", "") or "").strip()
+                if field_value:
+                    lines.append(f"field {field_name}: {field_value}")
+            footer = getattr(embed, "footer", None)
+            footer_text = getattr(footer, "text", None) if footer else None
+            if footer_text:
+                lines.append(f"footer: {str(footer_text).strip()}")
+            url = getattr(embed, "url", None)
+            if url:
+                lines.append(f"url: {str(url).strip()}")
+            timestamp = getattr(embed, "timestamp", None)
+            if timestamp is not None:
+                try:
+                    lines.append(f"timestamp: {timestamp.isoformat()}")
+                except Exception:
+                    lines.append(f"timestamp: {timestamp}")
+            image = getattr(embed, "image", None)
+            image_url = getattr(image, "url", None) if image else None
+            if image_url:
+                lines.append(f"image_url: {str(image_url).strip()}")
+            thumbnail = getattr(embed, "thumbnail", None)
+            thumbnail_url = getattr(thumbnail, "url", None) if thumbnail else None
+            if thumbnail_url:
+                lines.append(f"thumbnail_url: {str(thumbnail_url).strip()}")
+            if len(lines) > 1:
+                sections.append("\n".join(lines))
+        if not sections:
+            return None
+        return "\n\n".join(sections)
+
+    @staticmethod
+    def _format_discord_attachment_context(attachments: list[Any]) -> Optional[str]:
+        """Render Discord attachment metadata into plain text context."""
+        lines: list[str] = []
+        for idx, att in enumerate(attachments, start=1):
+            if att is None:
+                continue
+            parts = [f"filename={str(getattr(att, filename, None) or fattachment-{idx}).strip()}"]
+            content_type = getattr(att, "content_type", None)
+            if content_type:
+                parts.append(f"content_type={str(content_type).strip()}")
+            size = getattr(att, "size", None)
+            if size is not None:
+                parts.append(f"size={size}")
+            url = getattr(att, "url", None)
+            if url:
+                parts.append(f"url={str(url).strip()}")
+            lines.append("- " + "; ".join(parts))
+        if not lines:
+            return None
+        return "[Discord attachments]\n" + "\n".join(lines)
+
     def _discord_free_response_channels(self) -> set:
         """Return Discord channel IDs where no bot mention is required.
 
@@ -4478,12 +4551,14 @@ class DiscordAdapter(BasePlatformAdapter):
         mention_prefix = False
 
         snapshot_attachments = []
+        snapshot_embeds = []
         if hasattr(message, "message_snapshots") and message.message_snapshots:
             snapshot_text_parts = []
             for snap in message.message_snapshots:
                 if getattr(snap, "content", None):
                     snapshot_text_parts.append(snap.content.strip())
                 snapshot_attachments.extend(getattr(snap, "attachments", []) or [])
+                snapshot_embeds.extend(getattr(snap, "embeds", []) or [])
             if snapshot_text_parts and not raw_content:
                 raw_content = "\n".join(snapshot_text_parts)
                 normalized_content = raw_content
@@ -4563,6 +4638,18 @@ class DiscordAdapter(BasePlatformAdapter):
                     self._threads.mark(thread_id)
 
         all_attachments = list(message.attachments) + snapshot_attachments
+        all_embeds = list(getattr(message, "embeds", []) or []) + snapshot_embeds
+        structured_context_parts: list[str] = []
+        embed_context = self._format_discord_embed_context(all_embeds)
+        if embed_context:
+            structured_context_parts.append(embed_context)
+        attachment_context = self._format_discord_attachment_context(all_attachments)
+        if attachment_context:
+            structured_context_parts.append(attachment_context)
+        structured_context_injection = "\n\n".join(structured_context_parts) if structured_context_parts else None
+        if structured_context_injection and not raw_content:
+            raw_content = structured_context_injection
+            normalized_content = structured_context_injection
 
         # Determine message type
         msg_type = MessageType.TEXT
@@ -4638,7 +4725,7 @@ class DiscordAdapter(BasePlatformAdapter):
         # vision tool can access them reliably (Discord CDN URLs can expire).
         media_urls = []
         media_types = []
-        pending_text_injection: Optional[str] = None
+        pending_text_injection: Optional[str] = structured_context_injection
         for att in all_attachments:
             content_type = att.content_type or "unknown"
             if content_type.startswith("image/"):
