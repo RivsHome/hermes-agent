@@ -857,6 +857,7 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_start_callback=None,
         tool_complete_callback=None,
         gateway_session_key: Optional[str] = None,
+        disable_tools: bool = False,
     ) -> Any:
         """
         Create an AIAgent instance using the gateway's runtime config.
@@ -882,7 +883,7 @@ class APIServerAdapter(BasePlatformAdapter):
         model = _resolve_gateway_model()
 
         user_config = _load_gateway_config()
-        enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+        enabled_toolsets = ["__receipt_extraction_no_tools__"] if disable_tools else sorted(_get_platform_tools(user_config, "api_server"))
 
         max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
 
@@ -893,7 +894,7 @@ class APIServerAdapter(BasePlatformAdapter):
         agent = AIAgent(
             model=model,
             **runtime_kwargs,
-            max_iterations=max_iterations,
+            max_iterations=1 if disable_tools else max_iterations,
             quiet_mode=True,
             verbose_logging=False,
             ephemeral_system_prompt=ephemeral_system_prompt or None,
@@ -904,11 +905,15 @@ class APIServerAdapter(BasePlatformAdapter):
             tool_progress_callback=tool_progress_callback,
             tool_start_callback=tool_start_callback,
             tool_complete_callback=tool_complete_callback,
-            session_db=self._ensure_session_db(),
+            session_db=None if disable_tools else self._ensure_session_db(),
+            **({"skip_memory": True, "skip_context_files": True} if disable_tools else {}),
             fallback_model=fallback_model,
             reasoning_config=reasoning_config,
             gateway_session_key=gateway_session_key,
         )
+        if disable_tools:
+            agent.tools = []
+            agent.valid_tool_names = set()
         return agent
 
     # ------------------------------------------------------------------
@@ -917,7 +922,7 @@ class APIServerAdapter(BasePlatformAdapter):
 
     async def _handle_health(self, request: "web.Request") -> "web.Response":
         """GET /health — simple health check."""
-        return web.json_response({"status": "ok", "platform": "hermes-agent"})
+        return web.json_response({"status": "ok", "platform": "hermes-agent", "receipt_extraction_tools_disabled": True})
 
     async def _handle_health_detailed(self, request: "web.Request") -> "web.Response":
         """GET /health/detailed — rich status for cross-container dashboard probing.
@@ -1239,6 +1244,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 ephemeral_system_prompt=system_prompt,
                 session_id=session_id,
                 gateway_session_key=gateway_session_key,
+                **({"disable_tools": True} if body.get("tool_choice") == "none" else {}),
             )
 
         idempotency_key = request.headers.get("Idempotency-Key")
@@ -2743,6 +2749,7 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_complete_callback=None,
         agent_ref: Optional[list] = None,
         gateway_session_key: Optional[str] = None,
+        disable_tools: bool = False,
     ) -> tuple:
         """
         Create an agent and run a conversation in a thread executor.
@@ -2766,6 +2773,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 tool_start_callback=tool_start_callback,
                 tool_complete_callback=tool_complete_callback,
                 gateway_session_key=gateway_session_key,
+                **({"disable_tools": True} if disable_tools else {}),
             )
             if agent_ref is not None:
                 agent_ref[0] = agent
