@@ -127,6 +127,10 @@ RUN uv pip install --python /opt/hermes/.venv/bin/python \
     typing-extensions==4.15.0 \
     yarl==1.22.0
 
+# ---------- Version-guarded OpenAI 2.24.0 parsing patch ----------
+RUN /opt/hermes/.venv/bin/python -c 'from importlib.metadata import version; assert version("openai") == "2.24.0", "OpenAI parsing patch requires openai 2.24.0"'
+COPY rivs/patches/openai_lib_parsing_responses.py /opt/hermes/.venv/lib/python3.13/site-packages/openai/lib/_parsing/_responses.py
+
 # ---------- Runtime ----------
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
 ENV HERMES_HOME=/opt/data
