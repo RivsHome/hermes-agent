@@ -111,6 +111,22 @@ RUN chmod -R a+rX /opt/hermes && \
 # this a fast (~1s) egg-link creation with no resolution or downloads.
 RUN uv pip install --no-cache-dir --no-deps -e "."
 
+# ---------- Production image additions (live dependency versions) ----------
+RUN uv pip install --python /opt/hermes/.venv/bin/python \
+    edge-tts==7.2.7 \
+    tabulate==0.10.0 \
+    aiohttp==3.13.3 \
+    aiohappyeyeballs==2.6.1 \
+    aiosignal==1.4.0 \
+    attrs==25.4.0 \
+    certifi==2026.2.25 \
+    frozenlist==1.8.0 \
+    idna==3.15 \
+    multidict==6.7.1 \
+    propcache==0.4.1 \
+    typing-extensions==4.15.0 \
+    yarl==1.22.0
+
 # ---------- Runtime ----------
 ENV HERMES_WEB_DIST=/opt/hermes/hermes_cli/web_dist
 ENV HERMES_HOME=/opt/data
