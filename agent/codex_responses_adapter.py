@@ -913,7 +913,7 @@ def _normalize_codex_response(response: Any) -> tuple[Any, str]:
     saw_commentary_phase = False
     saw_final_answer_phase = False
 
-    for item in output:
+    for item in (output or []):
         item_type = getattr(item, "type", None)
         item_status = getattr(item, "status", None)
         if isinstance(item_status, str):
